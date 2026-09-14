@@ -35,155 +35,7 @@ class SVRStoreApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const AuthWrapper(),
-    );
-  }
-}
-
-// Auth State Wrapper: Login అయి ఉన్నారో లేదో చెక్ చేస్తుంది
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        if (snapshot.hasData && snapshot.data != null) {
-          return HomeScreen(currentUser: snapshot.data!);
-        }
-        return const AuthScreen();
-      },
-    );
-  }
-}
-
-// ---------------- AUTH SCREEN (LOGIN & SIGN UP) ----------------
-class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
-
-  @override
-  State<AuthScreen> createState() => _AuthScreenState();
-}
-
-class _AuthScreenState extends State<AuthScreen> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool isLoginMode = true;
-  bool isLoading = false;
-
-  Future<void> _submitAuth() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter email and password')),
-      );
-      return;
-    }
-
-    setState(() => isLoading = true);
-    try {
-      if (isLoginMode) {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-      } else {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Authentication failed')),
-      );
-    } finally {
-      if (mounted) setState(() => isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.storefront, size: 64, color: Colors.deepPurple),
-                    const SizedBox(height: 8),
-                    const Text('SVR Store', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text(
-                      isLoginMode ? 'Login to continue shopping' : 'Create an account',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email Address',
-                        prefixIcon: Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: Icon(Icons.lock_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: isLoading ? null : _submitAuth,
-                        child: isLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : Text(isLoginMode ? 'Login' : 'Sign Up', style: const TextStyle(fontSize: 16)),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: () => setState(() => isLoginMode = !isLoginMode),
-                      child: Text(
-                        isLoginMode
-                            ? "Don't have an account? Sign Up"
-                            : "Already have an account? Login",
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      home: const HomeScreen(),
     );
   }
 }
@@ -225,10 +77,9 @@ class CartItem {
   CartItem({required this.product, this.quantity = 1});
 }
 
-// ---------------- HOME SCREEN ----------------
+// ---------------- HOME SCREEN (DIRECT LANDING) ----------------
 class HomeScreen extends StatefulWidget {
-  final User currentUser;
-  const HomeScreen({super.key, required this.currentUser});
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -240,10 +91,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String selectedCategory = 'All';
   final List<String> categories = ['All', 'Electronics', 'Footwear', 'Accessories', 'Fashion'];
 
-  // మీ అడ్మిన్ ఈమెయిల్ ఇక్కడ మార్చుకోవచ్చు:
+  // మీ అడ్మిన్ ఈమెయిల్
   final String adminEmail = "admin@svrstore.com";
-
-  bool get isAdmin => widget.currentUser.email?.toLowerCase() == adminEmail.toLowerCase();
 
   void addToCart(Product product) {
     setState(() {
@@ -265,210 +114,349 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int get totalCartItems => cart.fold(0, (total, item) => total + item.quantity);
 
+  void _openAuthDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => const AuthDialog(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnapshot) {
+        final currentUser = authSnapshot.data;
+        final bool isLoggedIn = currentUser != null;
+        final bool isAdmin = isLoggedIn && (currentUser.email?.toLowerCase() == adminEmail.toLowerCase());
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('SVR Store', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                if (isLoggedIn)
+                  Text(
+                    isAdmin ? 'Admin Mode' : currentUser.email ?? '',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isAdmin ? Colors.amber.shade900 : Colors.grey.shade700,
+                      fontWeight: isAdmin ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              // Admin లాగిన్ అయినప్పుడు మాత్రమే కనిపించే బటన్లు
+              if (isAdmin) ...[
+                IconButton(
+                  tooltip: 'Orders Dashboard',
+                  icon: const Icon(Icons.receipt_long, color: Colors.deepPurple),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const OrdersDashboardScreen()),
+                    );
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Manage Products',
+                  icon: const Icon(Icons.add_business, color: Colors.deepPurple),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AdminProductScreen()),
+                    );
+                  },
+                ),
+              ],
+
+              // Cart Button
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    tooltip: 'Cart',
+                    icon: const Icon(Icons.shopping_cart),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CartScreen(
+                            cart: cart,
+                            currentUser: currentUser,
+                            onUpdate: () => setState(() {}),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  if (totalCartItems > 0)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: CircleAvatar(
+                        radius: 9,
+                        backgroundColor: Colors.red,
+                        child: Text(
+                          '$totalCartItems',
+                          style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+
+              // Cart పక్కన Login / Logout బటన్
+              if (!isLoggedIn)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: Colors.deepPurple),
+                    icon: const Icon(Icons.login),
+                    label: const Text('Login'),
+                    onPressed: _openAuthDialog,
+                  ),
+                )
+              else
+                IconButton(
+                  tooltip: 'Logout',
+                  icon: const Icon(Icons.logout, color: Colors.red),
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                ),
+              const SizedBox(width: 4),
+            ],
+          ),
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search products in SVR Store...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  ),
+                  onChanged: (val) => setState(() => searchQuery = val),
+                ),
+              ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: categories.map((cat) {
+                    final isSelected = selectedCategory == cat;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(cat),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          if (selected) setState(() => selectedCategory = cat);
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('products').snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final docs = snapshot.data?.docs ?? [];
+                    final products = docs.map((doc) => Product.fromFirestore(doc)).toList();
+
+                    final filtered = products.where((product) {
+                      final matchesSearch = product.name.toLowerCase().contains(searchQuery.toLowerCase());
+                      final matchesCategory = selectedCategory == 'All' || product.category == selectedCategory;
+                      return matchesSearch && matchesCategory;
+                    }).toList();
+
+                    if (filtered.isEmpty) {
+                      return const Center(child: Text('No products found in SVR Store!'));
+                    }
+
+                    return GridView.builder(
+                      padding: const EdgeInsets.all(12),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 0.70,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final item = filtered[index];
+                        return Card(
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                  child: Image.network(
+                                    item.imageUrl,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image)),
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '₹${item.price.toStringAsFixed(0)}',
+                                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        onPressed: () => addToCart(item),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.deepPurple,
+                                          foregroundColor: Colors.white,
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                        child: const Text('Add to Cart', style: TextStyle(fontSize: 12)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ---------------- AUTH DIALOG (LOGIN / SIGN UP POPUP) ----------------
+class AuthDialog extends StatefulWidget {
+  const AuthDialog({super.key});
+
+  @override
+  State<AuthDialog> createState() => _AuthDialogState();
+}
+
+class _AuthDialogState extends State<AuthDialog> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool isLoginMode = true;
+  bool isLoading = false;
+
+  Future<void> _submitAuth() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter email and password')),
+      );
+      return;
+    }
+
+    setState(() => isLoading = true);
+    try {
+      if (isLoginMode) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
+      } else {
+        await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
+      }
+      if (mounted) Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Authentication failed')),
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Icon(isLoginMode ? Icons.login : Icons.person_add, color: Colors.deepPurple),
+          const SizedBox(width: 8),
+          Text(isLoginMode ? 'Login to SVR Store' : 'Create Account'),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('SVR Store', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            Text(
-              isAdmin ? 'Logged in as Admin' : widget.currentUser.email ?? '',
-              style: TextStyle(fontSize: 11, color: isAdmin ? Colors.amber.shade900 : Colors.grey.shade700),
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email Address',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 45,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: isLoading ? null : _submitAuth,
+                child: isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : Text(isLoginMode ? 'Login' : 'Sign Up'),
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(() => isLoginMode = !isLoginMode),
+              child: Text(isLoginMode ? "Don't have an account? Sign Up" : "Already have an account? Login"),
             ),
           ],
         ),
-        actions: [
-          // అడ్మిన్ లాగిన్ అయితే మాత్రమే కనిపించే ఆప్షన్లు
-          if (isAdmin) ...[
-            IconButton(
-              tooltip: 'Orders Dashboard',
-              icon: const Icon(Icons.receipt_long, color: Colors.deepPurple),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const OrdersDashboardScreen()),
-                );
-              },
-            ),
-            IconButton(
-              tooltip: 'Manage Products',
-              icon: const Icon(Icons.add_business, color: Colors.deepPurple),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const AdminProductScreen()),
-                );
-              },
-            ),
-          ],
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                tooltip: 'Cart',
-                icon: const Icon(Icons.shopping_cart),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CartScreen(
-                        cart: cart,
-                        currentUser: widget.currentUser,
-                        onUpdate: () => setState(() {}),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              if (totalCartItems > 0)
-                Positioned(
-                  right: 6,
-                  top: 6,
-                  child: CircleAvatar(
-                    radius: 9,
-                    backgroundColor: Colors.red,
-                    child: Text(
-                      '$totalCartItems',
-                      style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          IconButton(
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut(),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-              onChanged: (val) => setState(() => searchQuery = val),
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: categories.map((cat) {
-                final isSelected = selectedCategory == cat;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(cat),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      if (selected) setState(() => selectedCategory = cat);
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('products').snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final docs = snapshot.data?.docs ?? [];
-                final products = docs.map((doc) => Product.fromFirestore(doc)).toList();
-
-                final filtered = products.where((product) {
-                  final matchesSearch = product.name.toLowerCase().contains(searchQuery.toLowerCase());
-                  final matchesCategory = selectedCategory == 'All' || product.category == selectedCategory;
-                  return matchesSearch && matchesCategory;
-                }).toList();
-
-                if (filtered.isEmpty) {
-                  return const Center(child: Text('No products found in SVR Store!'));
-                }
-
-                return GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.70,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final item = filtered[index];
-                    return Card(
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                              child: Image.network(
-                                item.imageUrl,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image)),
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '₹${item.price.toStringAsFixed(0)}',
-                                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 6),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: () => addToCart(item),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.deepPurple,
-                                      foregroundColor: Colors.white,
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                    child: const Text('Add to Cart', style: TextStyle(fontSize: 12)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -477,7 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
 // ---------------- CART & CHECKOUT ----------------
 class CartScreen extends StatefulWidget {
   final List<CartItem> cart;
-  final User currentUser;
+  final User? currentUser;
   final VoidCallback onUpdate;
 
   const CartScreen({
@@ -580,12 +568,19 @@ class _CartScreenState extends State<CartScreen> {
                           icon: const Icon(Icons.shopping_cart_checkout),
                           label: const Text('Proceed to Checkout', style: TextStyle(fontSize: 16)),
                           onPressed: () {
+                            if (widget.currentUser == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Please login first to place an order!')),
+                              );
+                              showDialog(context: context, builder: (context) => const AuthDialog());
+                              return;
+                            }
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => CheckoutScreen(
                                   cart: widget.cart,
-                                  currentUser: widget.currentUser,
+                                  currentUser: widget.currentUser!,
                                   totalPrice: totalPrice,
                                   onOrderCompleted: () {
                                     setState(() => widget.cart.clear());
