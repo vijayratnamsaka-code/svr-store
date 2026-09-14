@@ -9,7 +9,7 @@ void main() async {
   if (kIsWeb) {
     await Firebase.initializeApp(
       options: const FirebaseOptions(
-        apiKey: "AIzaSyCPf1g-X2XAiDNrzw0XeoKpdlorXA0nMHY",
+        apiKey: "AIzaSyCPf1g-X2XAIDnRzw0XeoKpdlorXA0nMHY",
         authDomain: "svr-store.firebaseapp.com",
         projectId: "svr-store",
         storageBucket: "svr-store.firebasestorage.app",
