@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,11 +35,160 @@ class SVRStoreApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: const AuthWrapper(),
     );
   }
 }
 
+// Auth State Wrapper: Login అయి ఉన్నారో లేదో చెక్ చేస్తుంది
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (snapshot.hasData && snapshot.data != null) {
+          return HomeScreen(currentUser: snapshot.data!);
+        }
+        return const AuthScreen();
+      },
+    );
+  }
+}
+
+// ---------------- AUTH SCREEN (LOGIN & SIGN UP) ----------------
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool isLoginMode = true;
+  bool isLoading = false;
+
+  Future<void> _submitAuth() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter email and password')),
+      );
+      return;
+    }
+
+    setState(() => isLoading = true);
+    try {
+      if (isLoginMode) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } else {
+        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Authentication failed')),
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.storefront, size: 64, color: Colors.deepPurple),
+                    const SizedBox(height: 8),
+                    const Text('SVR Store', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(
+                      isLoginMode ? 'Login to continue shopping' : 'Create an account',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email Address',
+                        prefixIcon: Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: Icon(Icons.lock_outline),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: isLoading ? null : _submitAuth,
+                        child: isLoading
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : Text(isLoginMode ? 'Login' : 'Sign Up', style: const TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => setState(() => isLoginMode = !isLoginMode),
+                      child: Text(
+                        isLoginMode
+                            ? "Don't have an account? Sign Up"
+                            : "Already have an account? Login",
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- PRODUCT & CART MODELS ----------------
 class Product {
   final String id;
   final String name;
@@ -72,12 +222,13 @@ class Product {
 class CartItem {
   final Product product;
   int quantity;
-
   CartItem({required this.product, this.quantity = 1});
 }
 
+// ---------------- HOME SCREEN ----------------
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final User currentUser;
+  const HomeScreen({super.key, required this.currentUser});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -89,10 +240,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String selectedCategory = 'All';
   final List<String> categories = ['All', 'Electronics', 'Footwear', 'Accessories', 'Fashion'];
 
-  // Admin status tracking
-  bool isAdminLoggedIn = false;
-  // మీ సీక్రెట్ అడ్మిన్ పిన్ (కావాలంటే దీన్ని మార్చుకోవచ్చు)
-  final String adminSecretPin = "1234";
+  // మీ అడ్మిన్ ఈమెయిల్ ఇక్కడ మార్చుకోవచ్చు:
+  final String adminEmail = "admin@svrstore.com";
+
+  bool get isAdmin => widget.currentUser.email?.toLowerCase() == adminEmail.toLowerCase();
 
   void addToCart(Product product) {
     setState(() {
@@ -107,99 +258,33 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('${product.name} added to cart!'),
-        duration: const Duration(milliseconds: 800),
+        duration: const Duration(milliseconds: 700),
       ),
     );
   }
 
   int get totalCartItems => cart.fold(0, (total, item) => total + item.quantity);
 
-  void _showAdminLoginDialog() {
-    final pinController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.admin_panel_settings, color: Colors.deepPurple),
-            SizedBox(width: 8),
-            Text('Admin Login'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Enter Admin PIN to access dashboard:'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: pinController,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Enter 4-digit PIN',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock_outline),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              if (pinController.text.trim() == adminSecretPin) {
-                setState(() {
-                  isAdminLoggedIn = true;
-                });
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Admin Login Successful!')),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Incorrect Admin PIN!'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('Login'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _logoutAdmin() {
-    setState(() {
-      isAdminLoggedIn = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Logged out from Admin Mode.')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SVR Store', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('SVR Store', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(
+              isAdmin ? 'Logged in as Admin' : widget.currentUser.email ?? '',
+              style: TextStyle(fontSize: 11, color: isAdmin ? Colors.amber.shade900 : Colors.grey.shade700),
+            ),
+          ],
+        ),
         actions: [
-          // Admin లాగిన్ అయితే మాత్రమే ఈ బటన్స్ కనిపిస్తాయి:
-          if (isAdminLoggedIn) ...[
+          // అడ్మిన్ లాగిన్ అయితే మాత్రమే కనిపించే ఆప్షన్లు
+          if (isAdmin) ...[
             IconButton(
               tooltip: 'Orders Dashboard',
-              icon: const Icon(Icons.receipt_long_rounded, color: Colors.deepPurple),
+              icon: const Icon(Icons.receipt_long, color: Colors.deepPurple),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -208,26 +293,14 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             IconButton(
-              tooltip: 'Add / Manage Products',
-              icon: const Icon(Icons.add_business_rounded, color: Colors.deepPurple),
+              tooltip: 'Manage Products',
+              icon: const Icon(Icons.add_business, color: Colors.deepPurple),
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const AdminProductScreen()),
                 );
               },
-            ),
-            IconButton(
-              tooltip: 'Admin Logout',
-              icon: const Icon(Icons.logout, color: Colors.red),
-              onPressed: _logoutAdmin,
-            ),
-          ] else ...[
-            // సాధారణ కస్టమర్లకి కేవలం ఒక చిన్న లాక్ ఐకాన్ మాత్రమే కనిపిస్తుంది (Admin Login కోసం)
-            IconButton(
-              tooltip: 'Admin Access',
-              icon: const Icon(Icons.lock_outline, size: 20),
-              onPressed: _showAdminLoginDialog,
             ),
           ],
           Stack(
@@ -242,6 +315,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     MaterialPageRoute(
                       builder: (context) => CartScreen(
                         cart: cart,
+                        currentUser: widget.currentUser,
                         onUpdate: () => setState(() {}),
                       ),
                     ),
@@ -263,7 +337,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
             ],
           ),
-          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout),
+            onPressed: () => FirebaseAuth.instance.signOut(),
+          ),
         ],
       ),
       body: Column(
@@ -272,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Search products in SVR Store...',
+                hintText: 'Search products...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -304,9 +382,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('products').snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
+                if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
@@ -321,16 +397,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 }).toList();
 
                 if (filtered.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.inventory_2_outlined, size: 60, color: Colors.grey),
-                        SizedBox(height: 8),
-                        Text('No products found in SVR Store!'),
-                      ],
-                    ),
-                  );
+                  return const Center(child: Text('No products found in SVR Store!'));
                 }
 
                 return GridView.builder(
@@ -386,7 +453,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                       backgroundColor: Colors.deepPurple,
                                       foregroundColor: Colors.white,
                                       padding: EdgeInsets.zero,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                     ),
                                     child: const Text('Add to Cart', style: TextStyle(fontSize: 12)),
                                   ),
@@ -408,11 +474,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+// ---------------- CART & CHECKOUT ----------------
 class CartScreen extends StatefulWidget {
   final List<CartItem> cart;
+  final User currentUser;
   final VoidCallback onUpdate;
 
-  const CartScreen({super.key, required this.cart, required this.onUpdate});
+  const CartScreen({
+    super.key,
+    required this.cart,
+    required this.currentUser,
+    required this.onUpdate,
+  });
 
   @override
   State<CartScreen> createState() => _CartScreenState();
@@ -482,16 +555,7 @@ class _CartScreenState extends State<CartScreen> {
                 ),
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(20),
-                        blurRadius: 8,
-                        offset: const Offset(0, -2),
-                      )
-                    ],
-                  ),
+                  color: Colors.white,
                   child: Column(
                     children: [
                       Row(
@@ -512,7 +576,6 @@ class _CartScreenState extends State<CartScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.deepPurple,
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           icon: const Icon(Icons.shopping_cart_checkout),
                           label: const Text('Proceed to Checkout', style: TextStyle(fontSize: 16)),
@@ -522,6 +585,7 @@ class _CartScreenState extends State<CartScreen> {
                               MaterialPageRoute(
                                 builder: (context) => CheckoutScreen(
                                   cart: widget.cart,
+                                  currentUser: widget.currentUser,
                                   totalPrice: totalPrice,
                                   onOrderCompleted: () {
                                     setState(() => widget.cart.clear());
@@ -544,12 +608,14 @@ class _CartScreenState extends State<CartScreen> {
 
 class CheckoutScreen extends StatefulWidget {
   final List<CartItem> cart;
+  final User currentUser;
   final double totalPrice;
   final VoidCallback onOrderCompleted;
 
   const CheckoutScreen({
     super.key,
     required this.cart,
+    required this.currentUser,
     required this.totalPrice,
     required this.onOrderCompleted,
   });
@@ -573,6 +639,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       final orderData = {
+        'userId': widget.currentUser.uid,
+        'userEmail': widget.currentUser.email,
         'timestamp': FieldValue.serverTimestamp(),
         'totalAmount': widget.totalPrice,
         'status': 'Pending',
@@ -601,9 +669,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           title: const Text('Order Placed Successfully! 🎉'),
-          content: Text(
-            'Thank you ${_nameController.text.trim()}! Your order worth ₹${widget.totalPrice.toStringAsFixed(0)} will be delivered via Cash on Delivery.',
-          ),
+          content: Text('Your order worth ₹${widget.totalPrice.toStringAsFixed(0)} will be delivered via Cash on Delivery.'),
           actions: [
             TextButton(
               onPressed: () {
@@ -618,90 +684,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to place order: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _addressController.dispose();
-    _cityController.dispose();
-    _pincodeController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Checkout & Shipping')),
+      appBar: AppBar(title: const Text('Shipping Details')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Card(
-                color: Colors.deepPurple.shade50,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Bill:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      Text(
-                        '₹${widget.totalPrice.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 18, color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Shipping Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
               TextFormField(
                 controller: _nameController,
-                decoration: InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: const Icon(Icons.person_outline),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
+                decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder()),
                 validator: (val) => val == null || val.trim().isEmpty ? 'Enter full name' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Mobile Number',
-                  prefixIcon: const Icon(Icons.phone_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'Enter mobile number';
-                  if (val.trim().length < 10) return 'Enter valid 10-digit number';
-                  return null;
-                },
+                decoration: const InputDecoration(labelText: 'Mobile Number', border: OutlineInputBorder()),
+                validator: (val) => val == null || val.trim().length < 10 ? 'Enter valid number' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _addressController,
                 maxLines: 2,
-                decoration: InputDecoration(
-                  labelText: 'Street Address / House No',
-                  prefixIcon: const Icon(Icons.home_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                validator: (val) => val == null || val.trim().isEmpty ? 'Enter delivery address' : null,
+                decoration: const InputDecoration(labelText: 'Delivery Address', border: OutlineInputBorder()),
+                validator: (val) => val == null || val.trim().isEmpty ? 'Enter address' : null,
               ),
               const SizedBox(height: 12),
               Row(
@@ -709,10 +725,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _cityController,
-                      decoration: InputDecoration(
-                        labelText: 'City / Town',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
+                      decoration: const InputDecoration(labelText: 'City', border: OutlineInputBorder()),
                       validator: (val) => val == null || val.trim().isEmpty ? 'Enter city' : null,
                     ),
                   ),
@@ -721,37 +734,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: TextFormField(
                       controller: _pincodeController,
                       keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Pincode',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Pincode', border: OutlineInputBorder()),
                       validator: (val) => val == null || val.trim().isEmpty ? 'Enter pincode' : null,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              const Card(
-                elevation: 1,
-                child: ListTile(
-                  leading: Icon(Icons.payments_outlined, color: Colors.deepPurple),
-                  title: Text('Payment Method: Cash on Delivery (COD)'),
-                  subtitle: Text('Pay with cash when package arrives'),
-                ),
-              ),
               const SizedBox(height: 24),
               SizedBox(
+                width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _isSubmitting ? null : _submitOrder,
                   child: _isSubmitting
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Confirm & Place Order', style: TextStyle(fontSize: 16)),
+                      : const Text('Confirm Order (COD)'),
                 ),
               ),
             ],
@@ -762,24 +763,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 }
 
+// ---------------- ORDERS DASHBOARD (ADMIN ONLY) ----------------
 class OrdersDashboardScreen extends StatelessWidget {
   const OrdersDashboardScreen({super.key});
-
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'delivered':
-        return Colors.green;
-      case 'shipped':
-        return Colors.blue;
-      default:
-        return Colors.orange;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Orders Dashboard')),
+      appBar: AppBar(title: const Text('Admin Orders Dashboard')),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('orders').orderBy('timestamp', descending: true).snapshots(),
         builder: (context, snapshot) {
@@ -790,7 +781,7 @@ class OrdersDashboardScreen extends StatelessWidget {
 
           final docs = snapshot.data?.docs ?? [];
           if (docs.isEmpty) {
-            return const Center(child: Text('No orders placed yet.', style: TextStyle(color: Colors.grey)));
+            return const Center(child: Text('No orders placed yet.'));
           }
 
           return ListView.builder(
@@ -799,86 +790,37 @@ class OrdersDashboardScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final doc = docs[index];
               final data = doc.data() as Map<String, dynamic>;
-              final String status = data['status']?.toString() ?? 'Pending';
+              final status = data['status']?.toString() ?? 'Pending';
               final List items = (data['items'] as List?) ?? [];
               final num total = data['totalAmount'] ?? 0;
-              final Map<String, dynamic>? customer = data['customer'] as Map<String, dynamic>?;
-              final Timestamp? ts = data['timestamp'] as Timestamp?;
-              final String dateStr = ts != null
-                  ? "${ts.toDate().day}/${ts.toDate().month}/${ts.toDate().year} ${ts.toDate().hour}:${ts.toDate().minute}"
-                  : 'Recent';
+              final customer = data['customer'] as Map<String, dynamic>?;
 
               return Card(
                 elevation: 3,
                 margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
-                  padding: const EdgeInsets.all(14.0),
+                  padding: const EdgeInsets.all(12.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Order #${doc.id.substring(0, 7)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(status).withAlpha(35),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              status,
-                              style: TextStyle(color: _getStatusColor(status), fontWeight: FontWeight.bold),
-                            ),
-                          ),
+                          Text('Order #${doc.id.substring(0, 6)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Text(status, style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text('Placed on: $dateStr', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      if (customer != null) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Customer: ${customer['name'] ?? 'N/A'} (${customer['phone'] ?? 'N/A'})', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                              const SizedBox(height: 2),
-                              Text('Address: ${customer['address'] ?? ''}, ${customer['city'] ?? ''} - ${customer['pincode'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.black87)),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const Divider(height: 20),
-                      ...items.map((item) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("${item['name']} (x${item['quantity']})"),
-                            Text("₹${item['price'] * item['quantity']}"),
-                          ],
-                        ),
-                      )),
-                      const Divider(height: 20),
+                      if (customer != null)
+                        Text('Customer: ${customer['name']} | ${customer['phone']} | ${customer['city']}'),
+                      const Divider(),
+                      ...items.map((i) => Text("${i['name']} x ${i['quantity']} - ₹${i['price'] * i['quantity']}")),
+                      const Divider(),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Total Bill:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          Text('₹$total', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          const Text('Update Status: ', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          const SizedBox(width: 8),
+                          Text('Total: ₹$total', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           DropdownButton<String>(
                             value: ['Pending', 'Shipped', 'Delivered'].contains(status) ? status : 'Pending',
-                            underline: const SizedBox(),
                             items: ['Pending', 'Shipped', 'Delivered'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                             onChanged: (newStatus) {
                               if (newStatus != null) {
@@ -900,6 +842,7 @@ class OrdersDashboardScreen extends StatelessWidget {
   }
 }
 
+// ---------------- MANAGE PRODUCTS (ADMIN ONLY) ----------------
 class AdminProductScreen extends StatefulWidget {
   const AdminProductScreen({super.key});
 
@@ -913,7 +856,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
   final _priceController = TextEditingController();
   final _imageUrlController = TextEditingController();
   final _descriptionController = TextEditingController();
-
   String _selectedCategory = 'Electronics';
   final List<String> _categories = ['Electronics', 'Footwear', 'Accessories', 'Fashion'];
   bool _isLoading = false;
@@ -935,52 +877,33 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Product added to SVR Store! 🎉')),
-      );
-
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product added successfully!')));
       _nameController.clear();
       _priceController.clear();
       _imageUrlController.clear();
       _descriptionController.clear();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error adding product: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _priceController.dispose();
-    _imageUrlController.dispose();
-    _descriptionController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Admin - Add Product')),
+      appBar: AppBar(title: const Text('Manage Products')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextFormField(
                 controller: _nameController,
-                decoration: InputDecoration(
-                  labelText: 'Product Name',
-                  prefixIcon: const Icon(Icons.shopping_bag_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                validator: (val) => val == null || val.trim().isEmpty ? 'Enter product name' : null,
+                decoration: const InputDecoration(labelText: 'Product Name', border: OutlineInputBorder()),
+                validator: (val) => val == null || val.trim().isEmpty ? 'Enter name' : null,
               ),
               const SizedBox(height: 12),
               Row(
@@ -989,26 +912,15 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                     child: TextFormField(
                       controller: _priceController,
                       keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Price (₹)',
-                        prefixIcon: const Icon(Icons.currency_rupee),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) return 'Enter price';
-                        if (double.tryParse(val) == null) return 'Enter valid number';
-                        return null;
-                      },
+                      decoration: const InputDecoration(labelText: 'Price (₹)', border: OutlineInputBorder()),
+                      validator: (val) => val == null || double.tryParse(val) == null ? 'Enter valid price' : null,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       value: _selectedCategory,
-                      decoration: InputDecoration(
-                        labelText: 'Category',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
                       items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedCategory = val);
@@ -1020,52 +932,30 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _imageUrlController,
-                decoration: InputDecoration(
-                  labelText: 'Image URL (Optional)',
-                  hintText: 'https://...',
-                  prefixIcon: const Icon(Icons.image_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
+                decoration: const InputDecoration(labelText: 'Image URL (Optional)', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _descriptionController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  prefixIcon: const Icon(Icons.description_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
+                maxLines: 2,
+                decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               SizedBox(
+                width: double.infinity,
                 height: 48,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
                   onPressed: _isLoading ? null : _addProduct,
-                  icon: _isLoading
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Icon(Icons.cloud_upload),
-                  label: Text(_isLoading ? 'Adding Product...' : 'Add Product to Store', style: const TextStyle(fontSize: 16)),
+                  child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Add Product'),
                 ),
               ),
-              const SizedBox(height: 24),
-              const Divider(),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8.0),
-                child: Text('Existing Products (Live Management)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
+              const Divider(height: 32),
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('products').snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  if (!snapshot.hasData) return const CircularProgressIndicator();
                   final docs = snapshot.data!.docs;
-                  if (docs.isEmpty) return const Text('No products currently in store.');
-
                   return ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -1073,22 +963,12 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                     itemBuilder: (context, index) {
                       final doc = docs[index];
                       final data = doc.data() as Map<String, dynamic>;
-                      return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        child: ListTile(
-                          title: Text(data['name']?.toString() ?? 'Unnamed'),
-                          subtitle: Text('₹${data['price']} • ${data['category']}'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                            onPressed: () async {
-                              await FirebaseFirestore.instance.collection('products').doc(doc.id).delete();
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Product deleted.')),
-                                );
-                              }
-                            },
-                          ),
+                      return ListTile(
+                        title: Text(data['name'] ?? ''),
+                        subtitle: Text('₹${data['price']} • ${data['category']}'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => FirebaseFirestore.instance.collection('products').doc(doc.id).delete(),
                         ),
                       );
                     },
