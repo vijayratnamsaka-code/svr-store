@@ -171,11 +171,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
 
-              // NORMAL CUSTOMER CONTROLS (My Orders & Profile)
-              if (isLoggedIn && !isAdmin) ...[
+              // CUSTOMER ONLY CONTROL: MY ORDERS ONLY (Profile icon removed as requested)
+              if (isLoggedIn && !isAdmin)
                 IconButton(
                   tooltip: 'My Orders',
-                  icon: const Icon(Icons.local_shipping_outlined, color: Colors.deepPurple),
+                  icon: const Icon(Icons.inventory_2_outlined, color: Colors.deepPurple),
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -185,19 +185,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
-                IconButton(
-                  tooltip: 'My Profile & Address',
-                  icon: const Icon(Icons.account_circle_outlined, color: Colors.deepPurple),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => CustomerProfileScreen(currentUser: currentUser),
-                      ),
-                    );
-                  },
-                ),
-              ],
 
               // CART
               Stack(
@@ -387,7 +374,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ---------------- CUSTOMER: MY ORDERS SCREEN ----------------
+// ---------------- CUSTOMER: MY ORDERS SCREEN ONLY ----------------
 class CustomerOrdersScreen extends StatelessWidget {
   final User currentUser;
   const CustomerOrdersScreen({super.key, required this.currentUser});
@@ -413,7 +400,7 @@ class CustomerOrdersScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.shopping_bag_outlined, size: 64, color: Colors.grey),
+                  Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
                   SizedBox(height: 12),
                   Text('No orders placed yet!', style: TextStyle(fontSize: 16, color: Colors.grey)),
                 ],
@@ -493,122 +480,7 @@ class CustomerOrdersScreen extends StatelessWidget {
   }
 }
 
-// ---------------- CUSTOMER: PROFILE & SAVED ADDRESS SCREEN ----------------
-class CustomerProfileScreen extends StatefulWidget {
-  final User currentUser;
-  const CustomerProfileScreen({super.key, required this.currentUser});
-
-  @override
-  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
-}
-
-class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _cityController = TextEditingController();
-  final _pincodeController = TextEditingController();
-  bool _isLoading = true;
-  bool _isSaving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserProfile();
-  }
-
-  Future<void> _loadUserProfile() async {
-    try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid).get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        _nameController.text = data['name'] ?? '';
-        _phoneController.text = data['phone'] ?? '';
-        _addressController.text = data['address'] ?? '';
-        _cityController.text = data['city'] ?? '';
-        _pincodeController.text = data['pincode'] ?? '';
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  Future<void> _saveProfile() async {
-    setState(() => _isSaving = true);
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid).set({
-        'name': _nameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'address': _addressController.text.trim(),
-        'city': _cityController.text.trim(),
-        'pincode': _pincodeController.text.trim(),
-        'email': widget.currentUser.email,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile details saved!')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('My Profile & Address')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Column(
-                      children: [
-                        const CircleAvatar(radius: 36, backgroundColor: Colors.deepPurple, child: Icon(Icons.person, size: 40, color: Colors.white)),
-                        const SizedBox(height: 8),
-                        Text(widget.currentUser.email ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text('Saved Delivery Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                  const SizedBox(height: 12),
-                  TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder())),
-                  const SizedBox(height: 12),
-                  TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone Number', border: OutlineInputBorder())),
-                  const SizedBox(height: 12),
-                  TextField(controller: _addressController, maxLines: 2, decoration: const InputDecoration(labelText: 'Street Address', border: OutlineInputBorder())),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: TextField(controller: _cityController, decoration: const InputDecoration(labelText: 'City', border: OutlineInputBorder()))),
-                      const SizedBox(width: 12),
-                      Expanded(child: TextField(controller: _pincodeController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Pincode', border: OutlineInputBorder()))),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
-                      onPressed: _isSaving ? null : _saveProfile,
-                      child: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Text('Save Address'),
-                    ),
-                  )
-                ],
-              ),
-            ),
-    );
-  }
-}
-
-// ---------------- CART & CHECKOUT (AUTO FILL SAVED ADDRESS) ----------------
+// ---------------- CART & CHECKOUT SCREEN ----------------
 class CartScreen extends StatefulWidget {
   final List<CartItem> cart;
   final User? currentUser;
@@ -774,28 +646,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _pincodeController = TextEditingController();
   bool _isSubmitting = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchSavedAddress();
-  }
-
-  Future<void> _fetchSavedAddress() async {
-    try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid).get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        setState(() {
-          _nameController.text = data['name'] ?? '';
-          _phoneController.text = data['phone'] ?? '';
-          _addressController.text = data['address'] ?? '';
-          _cityController.text = data['city'] ?? '';
-          _pincodeController.text = data['pincode'] ?? '';
-        });
-      }
-    } catch (_) {}
-  }
-
   Future<void> _submitOrder() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSubmitting = true);
@@ -823,16 +673,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       };
 
       await FirebaseFirestore.instance.collection('orders').add(orderData);
-
-      // Save this address as default if user hasn't saved before
-      await FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid).set({
-        'name': _nameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'address': _addressController.text.trim(),
-        'city': _cityController.text.trim(),
-        'pincode': _pincodeController.text.trim(),
-        'email': widget.currentUser.email,
-      }, SetOptions(merge: true));
 
       if (!mounted) return;
       widget.onOrderCompleted();
@@ -883,7 +723,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(labelText: 'Mobile Number', border: OutlineInputBorder()),
-                validator: (val) => val == null || val.trim().length < 10 ? 'Enter valid number' : null,
+                validator: (val) => val == null || val.trim().length < 10 ? 'Enter valid phone number' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -1156,7 +996,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
   }
 }
 
-// ---------------- AUTH DIALOG ----------------
+// ---------------- AUTH DIALOG (FORGOT PASSWORD & DUPLICATE ACCOUNT CHECK) ----------------
 class AuthDialog extends StatefulWidget {
   const AuthDialog({super.key});
 
@@ -1170,6 +1010,40 @@ class _AuthDialogState extends State<AuthDialog> {
   bool isLoginMode = true;
   bool isLoading = false;
 
+  // FORGOT PASSWORD
+  Future<void> _handleForgotPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your email above to reset password.')),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Password Reset Sent 📧'),
+          content: Text('A password reset link has been sent to $email. Please check your inbox.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Failed to send reset email')),
+      );
+    }
+  }
+
+  // SIGN IN / SIGN UP WITH DUPLICATE CHECK
   Future<void> _submitAuth() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -1190,8 +1064,22 @@ class _AuthDialogState extends State<AuthDialog> {
       }
       if (mounted) Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
+      String errorMessage = e.message ?? 'Authentication failed';
+
+      // DUPLICATE ACCOUNT CHECK
+      if (e.code == 'email-already-in-use') {
+        errorMessage = 'This email is already registered! Please switch to Login.';
+        setState(() => isLoginMode = true); // ఆటోమేటిక్‌గా Login మోడ్‌కి మార్చుతుంది
+      } else if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        errorMessage = 'Invalid email or password. Please try again.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Authentication failed')),
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+        ),
       );
     } finally {
       if (mounted) setState(() => isLoading = false);
@@ -1212,6 +1100,7 @@ class _AuthDialogState extends State<AuthDialog> {
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(
               controller: _emailController,
@@ -1232,9 +1121,16 @@ class _AuthDialogState extends State<AuthDialog> {
                 prefixIcon: Icon(Icons.lock_outline),
               ),
             ),
-            const SizedBox(height: 16),
+            if (isLoginMode)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _handleForgotPassword,
+                  child: const Text('Forgot Password?', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+            const SizedBox(height: 12),
             SizedBox(
-              width: double.infinity,
               height: 45,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -1247,6 +1143,7 @@ class _AuthDialogState extends State<AuthDialog> {
                     : Text(isLoginMode ? 'Login' : 'Sign Up'),
               ),
             ),
+            const SizedBox(height: 8),
             TextButton(
               onPressed: () => setState(() => isLoginMode = !isLoginMode),
               child: Text(isLoginMode ? "Don't have an account? Sign Up" : "Already have an account? Login"),
